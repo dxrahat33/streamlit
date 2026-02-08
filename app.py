@@ -1,55 +1,60 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-# গুগল শিট কানেকশন সেটআপ
-conn = st.connection("gsheets", type=GSheetsConnection)
+# পেজ সেটআপ
+st.set_page_config(page_title="PSSC Dashboard", layout="wide")
 
-# বর্তমান ডাটা রিড করা (যাতে SL. বের করা যায়)
-existing_data = conn.read(spreadsheet="আপনার_শিট_URL_বা_নাম")
-existing_data = existing_data.dropna(how="all")
+# CSS দিয়ে লুক উন্নত করা
+st.markdown("""
+    <style>
+    .stMetric { background-color: #ffffff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .main { background-color: #f8f9fa; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# --- নতুন এন্ট্রি ফর্ম ---
-with st.expander("➕ Add New Rental Entry"):
-    with st.form(key="add_new_entry"):
-        # স্বয়ংক্রিয়ভাবে পরবর্তী SL. নাম্বার জেনারেট করা
-        next_sl = int(existing_data["SL."].max() + 1) if not existing_data.empty else 1
-        st.write(f"Serial No: {next_sl}")
 
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            machine_name = st.selectbox("Machine Name", ["PLAIN MACHINE", "OVER LOCK", "FADE LOCK", "SNAP BUTTON"])
-            brand = st.text_input("Brand")
-        with col2:
-            model = st.text_input("Model")
-            serial_number = st.text_input("Serial Number")
-        with col3:
-            delivery_date = st.date_input("Delivery Date")
-            challan = st.text_input("Challan No")
+# ডাটা লোড করার ফাংশন
+def load_data():
+    # আপনার শিট আইডি
+    sheet_id = "16_qxMxo5n9XrMc2oXU8VQuOzgNs3rfGxx146CSzcfgU"
+    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
+    df = pd.read_csv(url)
+    df.columns = df.columns.str.strip()  # কলামের নামের স্পেস মোছা
+    return df
 
-        running_factory = st.text_input("Running (Factory Name)")
-        owner = st.selectbox("Owner", ["PSSC", "HS"])
 
-        submit_button = st.form_submit_button(label="Save to Google Sheet")
+try:
+    df = load_data()
 
-        if submit_button:
-            # নতুন ডাটার রো তৈরি
-            new_data = pd.DataFrame([{
-                "SL.": next_sl,
-                "MACHINE NAME": machine_name.upper(),
-                "BRAND": brand.upper(),
-                "MODEL": model.upper(),
-                "SERIAL NUMBER": serial_number,
-                "DELIVERY": delivery_date.strftime('%d.%m.%Y'),
-                "CHALLAN": challan,
-                "OWNER": owner,
-                "RUNNING": running_factory.upper()
-            }])
+    st.title("🏭 PARVEZ SEWING & SERVICING CENTER")
 
-            # আগের ডাটার সাথে নতুন ডাটা যোগ করা
-            updated_df = pd.concat([existing_data, new_data], ignore_index=True)
+    # --- নতুন এন্ট্রি ফর্ম (শুধুমাত্র প্রদর্শনের জন্য) ---
+    with st.expander("➕ Add New Entry Info"):
+        last_sl = int(df['SL.'].max()) if not df.empty else 0
+        st.write(f"পরবর্তী ক্রমিক নম্বর (SL): **{last_sl + 1}**")
+        st.info("নতুন এন্ট্রি যোগ করতে সরাসরি আপনার Google Sheet-এ গিয়ে লিখুন। এখানে ১ মিনিটের মধ্যে আপডেট হয়ে যাবে।")
 
-            # গুগল শিটে রাইট (Update) করা
-            conn.update(spreadsheet="আপনার_শিট_URL", data=updated_df)
-            st.success("Entry successfully saved to Google Sheet!")
-            st.balloons()
+    # --- গ্লোবাল সার্চ ---
+    search = st.text_input("🔍 Search (Serial, Company, Model...)", "")
+
+    if search:
+        filtered_df = df[df.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)]
+    else:
+        filtered_df = df
+
+    # --- মেট্রিক্স ---
+    unique_m = df.drop_duplicates(subset=['SERIAL NUMBER'])
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Unique Machines", len(unique_m))
+    c2.metric("Total Transactions", len(df))
+    # আপনার শিটে কলামের নাম 'RETURN DAT' আছে কিনা চেক করে নিন
+    on_rent = len(df[df['RETURN DAT'].isna()]) if 'RETURN DAT' in df.columns else 0
+    c3.metric("Currently On Rent", on_rent)
+
+    # --- ডাটা টেবিল ---
+    st.subheader("📋 Machine Records")
+    st.dataframe(filtered_df, use_container_width=True)
+
+except Exception as e:
+    st.error(f"Error loading data: {e}")
