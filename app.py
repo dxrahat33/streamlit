@@ -1,84 +1,55 @@
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-# পেজ সেটআপ - ড্যাশবোর্ডটিকে আধুনিক লুক দেওয়ার জন্য
-st.set_page_config(page_title="PSSC Machine Tracker", layout="wide")
+# গুগল শিট কানেকশন সেটআপ
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-# কাস্টম সিএসএস (Tailwind Inspired)
-st.markdown("""
-    <style>
-    .stMetric { background-color: #ffffff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #e5e7eb; }
-    .main { background-color: #f9fafb; }
-    h1 { color: #1f2937; font-weight: 800; }
-    </style>
-    """, unsafe_allow_html=True)
+# বর্তমান ডাটা রিড করা (যাতে SL. বের করা যায়)
+existing_data = conn.read(spreadsheet="আপনার_শিট_URL_বা_নাম")
+existing_data = existing_data.dropna(how="all")
 
+# --- নতুন এন্ট্রি ফর্ম ---
+with st.expander("➕ Add New Rental Entry"):
+    with st.form(key="add_new_entry"):
+        # স্বয়ংক্রিয়ভাবে পরবর্তী SL. নাম্বার জেনারেট করা
+        next_sl = int(existing_data["SL."].max() + 1) if not existing_data.empty else 1
+        st.write(f"Serial No: {next_sl}")
 
-@st.cache_data(ttl=600)  # ১০ মিনিট পর পর ডাটা অটো আপডেট হবে
-def load_data():
-    sheet_id = "16_qxMxo5n9XrMc2oXU8VQuOzgNs3rfGxx146CSzcfgU"
-    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
-    df = pd.read_csv(url)
-    df.columns = df.columns.str.strip()  # স্পেস রিমুভ করা
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            machine_name = st.selectbox("Machine Name", ["PLAIN MACHINE", "OVER LOCK", "FADE LOCK", "SNAP BUTTON"])
+            brand = st.text_input("Brand")
+        with col2:
+            model = st.text_input("Model")
+            serial_number = st.text_input("Serial Number")
+        with col3:
+            delivery_date = st.date_input("Delivery Date")
+            challan = st.text_input("Challan No")
 
-    # ডেট কলামগুলো কনভার্ট করা
-    df['DELIVERY'] = pd.to_datetime(df['DELIVERY'], dayfirst=True, errors='coerce')
-    # RETURN কলাম যদি ডেট হয় তবে কনভার্ট করুন
-    return df
+        running_factory = st.text_input("Running (Factory Name)")
+        owner = st.selectbox("Owner", ["PSSC", "HS"])
 
+        submit_button = st.form_submit_button(label="Save to Google Sheet")
 
-try:
-    df = load_data()
+        if submit_button:
+            # নতুন ডাটার রো তৈরি
+            new_data = pd.DataFrame([{
+                "SL.": next_sl,
+                "MACHINE NAME": machine_name.upper(),
+                "BRAND": brand.upper(),
+                "MODEL": model.upper(),
+                "SERIAL NUMBER": serial_number,
+                "DELIVERY": delivery_date.strftime('%d.%m.%Y'),
+                "CHALLAN": challan,
+                "OWNER": owner,
+                "RUNNING": running_factory.upper()
+            }])
 
-    st.title("🏭 PARVEZ SEWING & SERVICING CENTER")
-    st.markdown("---")
+            # আগের ডাটার সাথে নতুন ডাটা যোগ করা
+            updated_df = pd.concat([existing_data, new_data], ignore_index=True)
 
-    # --- ১. স্মার্ট সার্চ সেকশন ---
-    search_query = st.text_input("🔍 Quick Search", placeholder="Type Serial, Company Name, or Machine Type...").lower()
-
-    if search_query:
-        filtered_df = df[df.apply(lambda row: row.astype(str).str.contains(search_query, case=False).any(), axis=1)]
-    else:
-        filtered_df = df
-
-    # --- ২. মেট্রিক্স সেকশন (Unique Logic) ---
-    unique_machines_df = df.drop_duplicates(subset=['SERIAL NUMBER'])
-
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Total Machines (Unique)", len(unique_machines_df))
-    with col2:
-        st.metric("Total Rent Records", len(df))
-    with col3:
-        # RETURN কলাম চেক করে ভাড়ায় থাকা মেশিন বের করা
-        rented_count = len(df[df['RETURN'].isna() | (df['RETURN'] == "")])
-        st.metric("Currently on Rent", rented_count)
-    with col4:
-        st.metric("Total Clients", df['RUNNING'].nunique() if 'RUNNING' in df.columns else 0)
-
-    st.markdown("---")
-
-    # --- ৩. মেইন কন্টেন্ট এলাকা (দুই কলামে ভাগ করা) ---
-    left_col, right_col = st.columns([2, 1])
-
-    with left_col:
-        st.subheader(f"📋 Records ({len(filtered_df)} found)")
-        # টেবিল দেখানোর আগে ডেট ফরম্যাট সুন্দর করা
-        display_df = filtered_df.copy()
-        display_df['DELIVERY'] = display_df['DELIVERY'].dt.strftime('%d-%b-%Y')
-        st.dataframe(display_df, use_container_width=True, height=500)
-
-    with right_col:
-        st.subheader("📝 Inventory Summary")
-        # মেশিন টাইপ অনুযায়ী ইউনিক কাউন্ট
-        type_summary = unique_machines_df['MACHINE NAME'].value_counts().reset_index()
-        type_summary.columns = ['Machine Type', 'Stock']
-        st.table(type_summary)
-
-        # ডাউনলোড বাটন (CSV হিসেবে ব্যাকআপ রাখার জন্য)
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Full Backup", data=csv, file_name="machine_inventory_backup.csv",
-                           mime="text/csv")
-
-except Exception as e:
-    st.error(f"Something went wrong: {e}")
+            # গুগল শিটে রাইট (Update) করা
+            conn.update(spreadsheet="আপনার_শিট_URL", data=updated_df)
+            st.success("Entry successfully saved to Google Sheet!")
+            st.balloons()
