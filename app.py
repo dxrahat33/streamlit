@@ -1,25 +1,29 @@
 import streamlit as st
 import pandas as pd
 
-# পেজ সেটআপ
-st.set_page_config(page_title="PSSC Dashboard", layout="wide")
+# পেজ সেটআপ - ড্যাশবোর্ডটিকে আধুনিক লুক দেওয়ার জন্য
+st.set_page_config(page_title="PSSC Machine Tracker", layout="wide")
 
-# CSS দিয়ে লুক উন্নত করা
+# কাস্টম সিএসএস (Tailwind Inspired)
 st.markdown("""
     <style>
-    .stMetric { background-color: #ffffff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .main { background-color: #f8f9fa; }
+    .stMetric { background-color: #ffffff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #e5e7eb; }
+    .main { background-color: #f9fafb; }
+    h1 { color: #1f2937; font-weight: 800; }
     </style>
     """, unsafe_allow_html=True)
 
 
-# ডাটা লোড করার ফাংশন
+@st.cache_data(ttl=600)  # ১০ মিনিট পর পর ডাটা অটো আপডেট হবে
 def load_data():
-    # আপনার শিট আইডি
     sheet_id = "16_qxMxo5n9XrMc2oXU8VQuOzgNs3rfGxx146CSzcfgU"
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
     df = pd.read_csv(url)
-    df.columns = df.columns.str.strip()  # কলামের নামের স্পেস মোছা
+    df.columns = df.columns.str.strip()  # স্পেস রিমুভ করা
+
+    # ডেট কলামগুলো কনভার্ট করা
+    df['DELIVERY'] = pd.to_datetime(df['DELIVERY'], dayfirst=True, errors='coerce')
+    # RETURN কলাম যদি ডেট হয় তবে কনভার্ট করুন
     return df
 
 
@@ -27,34 +31,54 @@ try:
     df = load_data()
 
     st.title("🏭 PARVEZ SEWING & SERVICING CENTER")
+    st.markdown("---")
 
-    # --- নতুন এন্ট্রি ফর্ম (শুধুমাত্র প্রদর্শনের জন্য) ---
-    with st.expander("➕ Add New Entry Info"):
-        last_sl = int(df['SL.'].max()) if not df.empty else 0
-        st.write(f"পরবর্তী ক্রমিক নম্বর (SL): **{last_sl + 1}**")
-        st.info("নতুন এন্ট্রি যোগ করতে সরাসরি আপনার Google Sheet-এ গিয়ে লিখুন। এখানে ১ মিনিটের মধ্যে আপডেট হয়ে যাবে।")
+    # --- ১. স্মার্ট সার্চ সেকশন ---
+    search_query = st.text_input("🔍 Quick Search", placeholder="Type Serial, Company Name, or Machine Type...").lower()
 
-    # --- গ্লোবাল সার্চ ---
-    search = st.text_input("🔍 Search (Serial, Company, Model...)", "")
-
-    if search:
-        filtered_df = df[df.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)]
+    if search_query:
+        filtered_df = df[df.apply(lambda row: row.astype(str).str.contains(search_query, case=False).any(), axis=1)]
     else:
         filtered_df = df
 
-    # --- মেট্রিক্স ---
-    unique_m = df.drop_duplicates(subset=['SERIAL NUMBER'])
+    # --- ২. মেট্রিক্স সেকশন (Unique Logic) ---
+    unique_machines_df = df.drop_duplicates(subset=['SERIAL NUMBER'])
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Unique Machines", len(unique_m))
-    c2.metric("Total Transactions", len(df))
-    # আপনার শিটে কলামের নাম 'RETURN DAT' আছে কিনা চেক করে নিন
-    on_rent = len(df[df['RETURN DAT'].isna()]) if 'RETURN DAT' in df.columns else 0
-    c3.metric("Currently On Rent", on_rent)
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Machines (Unique)", len(unique_machines_df))
+    with col2:
+        st.metric("Total Rent Records", len(df))
+    with col3:
+        # RETURN কলাম চেক করে ভাড়ায় থাকা মেশিন বের করা
+        rented_count = len(df[df['RETURN'].isna() | (df['RETURN'] == "")])
+        st.metric("Currently on Rent", rented_count)
+    with col4:
+        st.metric("Total Clients", df['RUNNING'].nunique() if 'RUNNING' in df.columns else 0)
 
-    # --- ডাটা টেবিল ---
-    st.subheader("📋 Machine Records")
-    st.dataframe(filtered_df, use_container_width=True)
+    st.markdown("---")
+
+    # --- ৩. মেইন কন্টেন্ট এলাকা (দুই কলামে ভাগ করা) ---
+    left_col, right_col = st.columns([2, 1])
+
+    with left_col:
+        st.subheader(f"📋 Records ({len(filtered_df)} found)")
+        # টেবিল দেখানোর আগে ডেট ফরম্যাট সুন্দর করা
+        display_df = filtered_df.copy()
+        display_df['DELIVERY'] = display_df['DELIVERY'].dt.strftime('%d-%b-%Y')
+        st.dataframe(display_df, use_container_width=True, height=500)
+
+    with right_col:
+        st.subheader("📝 Inventory Summary")
+        # মেশিন টাইপ অনুযায়ী ইউনিক কাউন্ট
+        type_summary = unique_machines_df['MACHINE NAME'].value_counts().reset_index()
+        type_summary.columns = ['Machine Type', 'Stock']
+        st.table(type_summary)
+
+        # ডাউনলোড বাটন (CSV হিসেবে ব্যাকআপ রাখার জন্য)
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download Full Backup", data=csv, file_name="machine_inventory_backup.csv",
+                           mime="text/csv")
 
 except Exception as e:
-    st.error(f"Error loading data: {e}")
+    st.error(f"Something went wrong: {e}")
