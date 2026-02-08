@@ -62,7 +62,7 @@ try:
         st.metric("Total Transactions", len(df))
     with col3:
         # বর্তমানে কয়টি মেশিন বাইরে আছে (Return Date নেই)
-        currently_out = len(df[df['RETURN DAT'].isna()])
+        currently_out = len(df[df['RETURN DATE'].isna()])
         st.metric("Currently on Rent", currently_out)
 
     # --- ৫. মেশিন টাইপ অনুযায়ী ইউনিক তালিকা ---
