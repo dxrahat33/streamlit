@@ -1,79 +1,84 @@
 import streamlit as st
 import pandas as pd
 
-# পেজ সেটআপ
-st.set_page_config(page_title="Machine Inventory Dashboard", layout="wide")
+# পেজ সেটআপ - ড্যাশবোর্ডটিকে আধুনিক লুক দেওয়ার জন্য
+st.set_page_config(page_title="PSSC Machine Tracker", layout="wide")
 
-# ড্যাশবোর্ড স্টাইল (Tailwind লুকের জন্য)
+# কাস্টম সিএসএস (Tailwind Inspired)
 st.markdown("""
     <style>
-    .stMetric { background-color: #ffffff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; }
-    div[data-testid="stExpander"] { border: none !important; box-shadow: none !important; }
-    .main { background-color: #f3f4f6; }
+    .stMetric { background-color: #ffffff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #e5e7eb; }
+    .main { background-color: #f9fafb; }
+    h1 { color: #1f2937; font-weight: 800; }
     </style>
     """, unsafe_allow_html=True)
 
 
-# ডাটা লোড করার ফাংশন
+@st.cache_data(ttl=600)  # ১০ মিনিট পর পর ডাটা অটো আপডেট হবে
 def load_data():
-    sheet_id = "16_qxMxo5n9XrMc2oXU8VQuOzgNs3rfGxx146CSzcfgU"  # আপনার শিট আইডি এখানে দিন
+    sheet_id = "16_qxMxo5n9XrMc2oXU8VQuOzgNs3rfGxx146CSzcfgU"
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
     df = pd.read_csv(url)
+    df.columns = df.columns.str.strip()  # স্পেস রিমুভ করা
 
-    # কলামের নামগুলো পরিষ্কার করা (Spaces থাকলে সরিয়ে দেওয়া)
-    df.columns = df.columns.str.strip()
-
-    # ডেট ফরম্যাট ঠিক করা
+    # ডেট কলামগুলো কনভার্ট করা
     df['DELIVERY'] = pd.to_datetime(df['DELIVERY'], dayfirst=True, errors='coerce')
+    # RETURN কলাম যদি ডেট হয় তবে কনভার্ট করুন
     return df
 
 
 try:
     df = load_data()
 
-    # --- ১. ড্যাশবোর্ড হেডার এবং গ্লোবাল সার্চ ---
-    st.title("🏭 Smart Machine Inventory System")
+    st.title("🏭 PARVEZ SEWING & SERVICING CENTER")
+    st.markdown("---")
 
-    # গ্লোবাল সার্চ বক্স (যেকোনো কিছু লিখে সার্চ করা যাবে)
-    search_query = st.text_input("🔍 Search anything (Serial, Company, Challan, Brand...)", "").lower()
+    # --- ১. স্মার্ট সার্চ সেকশন ---
+    search_query = st.text_input("🔍 Quick Search", placeholder="Type Serial, Company Name, or Machine Type...").lower()
 
-    # --- ২. ডাটা ফিল্টারিং লজিক (Global Search) ---
     if search_query:
-        # সব কলামকে স্ট্রিং বানিয়ে সার্চ করা হচ্ছে যাতে সব ফিল্ডে কাজ করে
         filtered_df = df[df.apply(lambda row: row.astype(str).str.contains(search_query, case=False).any(), axis=1)]
     else:
         filtered_df = df
 
-    # --- ৩. ড্যাশবোর্ড ক্যালকুলেশন (Unique Logic) ---
-    # সিরিয়াল নম্বর অনুযায়ী ইউনিক মেশিন বের করা
+    # --- ২. মেট্রিক্স সেকশন (Unique Logic) ---
     unique_machines_df = df.drop_duplicates(subset=['SERIAL NUMBER'])
-    total_unique_machines = len(unique_machines_df)
 
-    # মেশিন নাম অনুযায়ী ইউনিক কয়টা করে মেশিন আছে (আপনার চাওয়া অনুযায়ী)
-    machine_type_counts = unique_machines_df['MACHINE NAME'].value_counts()
-
-    # --- ৪. ড্যাশবোর্ড কার্ডস (Top Section) ---
-    st.subheader("📊 Key Metrics (Total Inventory)")
-    col1, col2, col3 = st.columns(3)
-
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("Total Unique Machines", total_unique_machines)
+        st.metric("Total Machines (Unique)", len(unique_machines_df))
     with col2:
-        st.metric("Total Transactions", len(df))
+        st.metric("Total Rent Records", len(df))
     with col3:
-        # বর্তমানে কয়টি মেশিন বাইরে আছে (Return Date নেই)
-        currently_out = len(df[df['RETURN'].isna()])
-        st.metric("Currently on Rent", currently_out)
+        # RETURN কলাম চেক করে ভাড়ায় থাকা মেশিন বের করা
+        rented_count = len(df[df['RETURN'].isna() | (df['RETURN'] == "")])
+        st.metric("Currently on Rent", rented_count)
+    with col4:
+        st.metric("Total Clients", df['RUNNING'].nunique() if 'RUNNING' in df.columns else 0)
 
-    # --- ৫. মেশিন টাইপ অনুযায়ী ইউনিক তালিকা ---
-    with st.expander("📝 Show Inventory Summary (Unique Counts per Machine Type)"):
-        st.write("সিরিয়াল নম্বর অনুযায়ী কোন ধরণের মেশিন প্রকৃত পক্ষে কয়টি আছে:")
-        st.table(machine_type_counts)
+    st.markdown("---")
 
-    # --- ৬. মেইন ডাটা টেবিল ---
-    st.subheader(f"📋 Records ({len(filtered_df)} items found)")
-    # টেবিলটি সুন্দরভাবে দেখানোর জন্য
-    st.dataframe(filtered_df.sort_values(by='DELIVERY', ascending=False), use_container_width=True)
+    # --- ৩. মেইন কন্টেন্ট এলাকা (দুই কলামে ভাগ করা) ---
+    left_col, right_col = st.columns([2, 1])
+
+    with left_col:
+        st.subheader(f"📋 Records ({len(filtered_df)} found)")
+        # টেবিল দেখানোর আগে ডেট ফরম্যাট সুন্দর করা
+        display_df = filtered_df.copy()
+        display_df['DELIVERY'] = display_df['DELIVERY'].dt.strftime('%d-%b-%Y')
+        st.dataframe(display_df, use_container_width=True, height=500)
+
+    with right_col:
+        st.subheader("📝 Inventory Summary")
+        # মেশিন টাইপ অনুযায়ী ইউনিক কাউন্ট
+        type_summary = unique_machines_df['MACHINE NAME'].value_counts().reset_index()
+        type_summary.columns = ['Machine Type', 'Stock']
+        st.table(type_summary)
+
+        # ডাউনলোড বাটন (CSV হিসেবে ব্যাকআপ রাখার জন্য)
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download Full Backup", data=csv, file_name="machine_inventory_backup.csv",
+                           mime="text/csv")
 
 except Exception as e:
-    st.error(f"Error: {e}. দয়া করে শিট আইডি এবং কলামের নামগুলো চেক করুন।")
+    st.error(f"Something went wrong: {e}")
