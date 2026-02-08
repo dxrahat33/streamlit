@@ -24,7 +24,7 @@ def load_data():
     df.columns = df.columns.str.strip()
 
     # ডেট ফরম্যাট ঠিক করা
-    df['OUT DATE'] = pd.to_datetime(df['OUT DATE'], dayfirst=True, errors='coerce')
+    df['DELIVERY'] = pd.to_datetime(df['DELIVERY'], dayfirst=True, errors='coerce')
     return df
 
 
@@ -62,7 +62,7 @@ try:
         st.metric("Total Transactions", len(df))
     with col3:
         # বর্তমানে কয়টি মেশিন বাইরে আছে (Return Date নেই)
-        currently_out = len(df[df['RETURN DATE'].isna()])
+        currently_out = len(df[df['RETURN'].isna()])
         st.metric("Currently on Rent", currently_out)
 
     # --- ৫. মেশিন টাইপ অনুযায়ী ইউনিক তালিকা ---
@@ -73,7 +73,7 @@ try:
     # --- ৬. মেইন ডাটা টেবিল ---
     st.subheader(f"📋 Records ({len(filtered_df)} items found)")
     # টেবিলটি সুন্দরভাবে দেখানোর জন্য
-    st.dataframe(filtered_df.sort_values(by='OUT DATE', ascending=False), use_container_width=True)
+    st.dataframe(filtered_df.sort_values(by='DELIVERY', ascending=False), use_container_width=True)
 
 except Exception as e:
     st.error(f"Error: {e}. দয়া করে শিট আইডি এবং কলামের নামগুলো চেক করুন।")
