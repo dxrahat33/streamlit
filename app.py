@@ -16,7 +16,7 @@ st.markdown("""
 
 # ডাটা লোড করার ফাংশন
 def load_data():
-    sheet_id = "YOUR_SHEET_ID_HERE"  # আপনার শিট আইডি এখানে দিন
+    sheet_id = "16_qxMxo5n9XrMc2oXU8VQuOzgNs3rfGxx146CSzcfgU"  # আপনার শিট আইডি এখানে দিন
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
     df = pd.read_csv(url)
 
