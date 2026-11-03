@@ -54,7 +54,7 @@ try:
         rented_count = len(df[df['RETURN'].isna() | (df['RETURN'] == "")])
         st.metric("Currently on Rent", rented_count)
     with col4:
-        st.metric("Total Clients", df['RUNNING'].nunique() if 'RUNNING' in df.columns else 0)
+        st.metric("Total Clients", df['WHERE RUNNING'].nunique() if 'WHERE RUNNING' in df.columns else 0)
 
     st.markdown("---")
 
