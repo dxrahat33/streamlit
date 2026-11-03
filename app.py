@@ -30,7 +30,7 @@ def load_data():
 try:
     df = load_data()
 
-    st.title("🏭 PARVEZ SEWING & SERVICING CENTER")
+    st.title("🏭 PARVEZ SEWING & SERVICING CENTERr")
     st.markdown("---")
 
     # --- ১. স্মার্ট সার্চ সেকশন ---
